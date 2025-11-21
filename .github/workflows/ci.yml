@@ -66,6 +66,12 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Pull executor Docker image
+        run: docker pull onyxdotapp/python-executor-sci:latest
+
       - name: Run integration tests
         run: uv run pytest tests/integration_tests -q
 

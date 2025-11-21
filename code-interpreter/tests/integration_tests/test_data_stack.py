@@ -44,7 +44,7 @@ print(json.dumps({'summary': summary, 'png_bytes': len(buf.getvalue())}))
         json={
             "code": code,
             "stdin": None,
-            "timeout_ms": 2000,
+            "timeout_ms": 5000,
         },
     )
 

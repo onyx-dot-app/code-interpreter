@@ -73,8 +73,8 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build Docker image
-        working-directory: .
-        run: docker build -t code-interpreter:test -f code-interpreter/Dockerfile .
+        run: docker build -t code-interpreter:test -f Dockerfile .
+        working-directory: ./code-interpreter
 
       - name: Run Docker container for E2E tests
         run: |

@@ -73,7 +73,7 @@ jobs:
         run: docker pull onyxdotapp/python-executor-sci:latest
 
       - name: Run integration tests
-        run: uv run pytest tests/integration_tests -q
+        run: uv run pytest tests/integration_tests -v --tb=short -x
 
   e2e-tests:
     name: E2E Tests

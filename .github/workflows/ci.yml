@@ -72,17 +72,8 @@ jobs:
       - name: Pull executor Docker image
         run: docker pull onyxdotapp/python-executor-sci:latest
 
-      - name: Test Docker image can run
-        run: |
-          echo "Testing if the Docker image can start and sleep..."
-          docker run --rm -d --name test-container onyxdotapp/python-executor-sci:latest sleep 30
-          sleep 2
-          docker ps -a | grep test-container || echo "Container not found!"
-          docker logs test-container || echo "No logs"
-          docker stop test-container || true
-
       - name: Run integration tests
-        run: uv run pytest tests/integration_tests -v --tb=short -x -s
+        run: uv run pytest tests/integration_tests -v --tb=short -x
 
       - name: Show Docker container logs on failure
         if: failure()

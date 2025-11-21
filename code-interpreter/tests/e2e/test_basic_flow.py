@@ -140,3 +140,93 @@ print("File edited successfully")
         assert returned_content == expected_content, (
             f"Content mismatch. Expected: {expected_content!r}, Got: {returned_content!r}"
         )
+
+
+def test_matplotlib_sine_wave_plot() -> None:
+    timeout = httpx.Timeout(10.0, connect=5.0)
+
+    with httpx.Client(base_url=BASE_URL, timeout=timeout) as client:
+        # First check health
+        try:
+            health_response = client.get("/health")
+        except httpx.TransportError as exc:  # pragma: no cover - network failure path
+            pytest.fail(f"Failed to reach Code Interpreter service at {BASE_URL}: {exc!s}")
+
+        assert health_response.status_code == 200, health_response.text
+
+        code = """
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Generate data
+x = np.linspace(0, 10, 100)
+y = np.sin(x)
+
+# Create plot
+plt.figure(figsize=(10, 6))
+plt.plot(x, y)
+plt.title('Sine Wave')
+plt.xlabel('x')
+plt.ylabel('sin(x)')
+plt.grid(True)
+
+# Save plot
+plt.savefig('sine_wave.png')
+plt.close()
+print("Plot saved successfully")
+""".strip()
+
+        execute_payload: dict[str, Any] = {
+            "code": code,
+            "stdin": None,
+            "timeout_ms": 5000,
+            "files": [],
+        }
+
+        try:
+            execute_response = client.post("/v1/execute", json=execute_payload)
+        except httpx.TransportError as exc:  # pragma: no cover - network failure path
+            pytest.fail(f"Failed to reach Code Interpreter service at {BASE_URL}: {exc!s}")
+
+        assert execute_response.status_code == 200, execute_response.text
+
+        result = execute_response.json()
+
+        # Verify execution succeeded
+        assert result["stdout"] == "Plot saved successfully\n", f"stdout mismatch: {result}"
+        assert result["stderr"] == "", f"stderr should be empty: {result}"
+        assert result["exit_code"] == 0, f"exit_code should be 0: {result}"
+        assert result["timed_out"] is False, f"should not timeout: {result}"
+
+        # Verify the PNG file was created and returned
+        files = result.get("files")
+        assert isinstance(files, list), "files should be a list"
+
+        # Find the sine_wave.png file
+        png_file = None
+        for file_entry in files:
+            if isinstance(file_entry, dict) and file_entry.get("path") == "sine_wave.png":
+                png_file = file_entry
+                break
+
+        assert png_file is not None, f"sine_wave.png not found in response files: {files}"
+        assert png_file["kind"] == "file"
+
+        # Verify the file has a file_id
+        file_id = png_file.get("file_id")
+        assert isinstance(file_id, str), "file_id should be present"
+
+        # Download the file and verify it's a valid PNG
+        download_response = client.get(f"/v1/files/{file_id}")
+        assert download_response.status_code == 200, (
+            f"Failed to download file: {download_response.text}"
+        )
+        png_bytes = download_response.content
+
+        # PNG files start with these magic bytes
+        assert png_bytes[:8] == b"\x89PNG\r\n\x1a\n", "File should be a valid PNG"
+
+        # Verify the file has reasonable size (should be several KB for a plot)
+        assert len(png_bytes) > 1000, f"PNG file too small: {len(png_bytes)} bytes"

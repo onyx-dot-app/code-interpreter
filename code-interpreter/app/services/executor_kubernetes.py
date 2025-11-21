@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import io
 import logging
 import tarfile
@@ -180,36 +181,69 @@ class KubernetesExecutor(BaseExecutor):
         return tar_buffer.getvalue()
 
     def _extract_workspace_snapshot(self, pod_name: str) -> tuple[WorkspaceEntry, ...]:
-        """Extract files from the pod workspace after execution using tar."""
-        try:
-            exec_command = ["tar", "-c", "--exclude=__main__.py", "-C", "/workspace", "."]
+        """Extract files from the pod workspace after execution using tar.
 
+        Uses base64 encoding to safely transmit binary tar data through the
+        text-based Kubernetes WebSocket stream.
+        """
+        try:
+            # Use base64 to encode the tar output so it can safely pass through
+            # the text-based WebSocket stream without corruption
+            exec_command = [
+                "sh",
+                "-c",
+                "tar -c --exclude=__main__.py -C /workspace . | base64",
+            ]
+
+            logger.info(f"Starting tar extraction from pod {pod_name}")
             resp = stream.stream(
                 self.v1.connect_get_namespaced_pod_exec,
                 pod_name,
                 self.namespace,
                 command=exec_command,
-                stderr=False,
+                stderr=True,
                 stdin=False,
                 stdout=True,
                 tty=False,
                 _preload_content=False,
             )
 
-            tar_data = b""
+            base64_data = ""
+            stderr_data = ""
+
             while resp.is_open():
                 resp.update(timeout=1)
+
                 if resp.peek_stdout():
-                    tar_data += resp.read_stdout().encode("latin-1")
+                    base64_data += resp.read_stdout()
+
+                if resp.peek_stderr():
+                    stderr_data += resp.read_stderr()
 
             resp.close()
 
-            if not tar_data:
+            logger.info(f"Tar extraction complete. Received {len(base64_data)} base64 chars")
+            if stderr_data:
+                logger.warning(f"Tar extraction stderr: {stderr_data}")
+
+            if not base64_data:
+                logger.warning("No tar data received from workspace snapshot")
                 return tuple()
 
+            # Decode base64 to get the original tar binary data
+            tar_data = base64.b64decode(base64_data)
+            logger.info(f"Decoded to {len(tar_data)} bytes of tar data")
+
             entries = []
+            logger.info("Parsing tar archive")
             with tarfile.open(fileobj=io.BytesIO(tar_data), mode="r") as tar:
-                for member in tar.getmembers():
+                members = tar.getmembers()
+                logger.info(f"Tar archive contains {len(members)} members")
+                for member in members:
+                    logger.debug(
+                        f"Processing tar member: {member.name!r} (type={member.type!r}, "
+                        f"size={member.size})"
+                    )
                     if member.name == ".":
                         continue
 
@@ -223,12 +257,17 @@ class KubernetesExecutor(BaseExecutor):
                         file_obj = tar.extractfile(member)
                         if file_obj:
                             content = file_obj.read()
+                            logger.debug(f"Extracted file {clean_path}: {len(content)} bytes")
                             entries.append(
                                 WorkspaceEntry(path=clean_path, kind="file", content=content)
                             )
+                        else:
+                            logger.warning(f"Failed to extract file content for {clean_path}")
 
+            logger.info(f"Extracted {len(entries)} workspace entries")
             return tuple(entries)
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to extract workspace snapshot: {e}", exc_info=True)
             return tuple()
 
     def _cleanup_pod(self, pod_name: str) -> None:

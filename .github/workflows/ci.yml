@@ -75,6 +75,17 @@ jobs:
       - name: Run integration tests
         run: uv run pytest tests/integration_tests -v --tb=short -x
 
+      - name: Show Docker container logs on failure
+        if: failure()
+        run: |
+          echo "=== Docker containers ==="
+          docker ps -a
+          echo "=== Docker logs for all containers ==="
+          for container in $(docker ps -aq); do
+            echo "--- Logs for container $container ---"
+            docker logs $container || true
+          done
+
   e2e-tests:
     name: E2E Tests
     runs-on: ubuntu-latest

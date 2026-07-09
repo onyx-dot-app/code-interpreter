@@ -31,12 +31,17 @@ default to Docker Hardened Images mirrored into the org namespace
 (`onyxdotapp/dhi-golang`, `onyxdotapp/dhi-debian`); override the build args
 to use public images:
 
+Image variants are defined in `docker-bake.hcl`; CI runs the same
+definition:
+
 ```bash
-docker build . -t code-interpreter-go
+docker buildx bake --set "*.platforms=linux/amd64" --load   # both variants
+docker buildx bake slim --set "*.platforms=linux/amd64" --load
 # Without a DHI subscription:
-docker build . -t code-interpreter-go \
-  --build-arg BUILD_IMAGE=golang:1.26-bookworm \
-  --build-arg RUNTIME_IMAGE=debian:bookworm-slim
+BUILD_IMAGE=golang:1.26-bookworm RUNTIME_IMAGE=debian:bookworm-slim \
+  docker buildx bake --set "*.platforms=linux/amd64" --load
+# Plain docker build works too:
+docker build . -t code-interpreter-go
 ```
 
 ## Published images

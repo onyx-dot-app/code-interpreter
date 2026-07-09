@@ -119,54 +119,17 @@ jobs:
         id: version
         run: echo "version=$(grep -m1 'ServiceVersion = ' code-interpreter-go/internal/config/config.go | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
 
-      # Default image: includes the Docker daemon so every deployment mode
-      # works, including Docker-in-Docker.
-      - name: Extract metadata (default)
-        id: meta
-        uses: docker/metadata-action@v5
+      # Targets and tags are defined in code-interpreter-go/docker-bake.hcl:
+      # the default image (with the Docker daemon) and the -slim variant.
+      - name: Build and push code-interpreter-go images
+        uses: docker/bake-action@v5
         with:
-          images: ${{ env.DOCKERHUB_USERNAME }}/code-interpreter-go
-          tags: |
-            type=semver,pattern={{version}}
-            type=raw,value=${{ steps.version.outputs.version }}
-            type=raw,value=latest
-
-      # Slim image: no docker packages at all. Opt-in for Docker-out-of-Docker
-      # (mounted socket) and Kubernetes deployments.
-      - name: Extract metadata (slim)
-        id: meta-slim
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.DOCKERHUB_USERNAME }}/code-interpreter-go
-          flavor: |
-            latest=false
-          tags: |
-            type=semver,pattern={{version}},suffix=-slim
-            type=raw,value=${{ steps.version.outputs.version }}-slim
-            type=raw,value=latest-slim
-
-      - name: Build and push code-interpreter-go image (default)
-        uses: docker/build-push-action@v5
-        with:
-          context: ./code-interpreter-go
-          file: ./code-interpreter-go/Dockerfile
+          workdir: ./code-interpreter-go
           push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build and push code-interpreter-go image (slim)
-        uses: docker/build-push-action@v5
-        with:
-          context: ./code-interpreter-go
-          file: ./code-interpreter-go/Dockerfile
-          push: true
-          platforms: linux/amd64,linux/arm64
-          build-args: |
-            SKIP_NESTED_DOCKER=1
-          tags: ${{ steps.meta-slim.outputs.tags }}
-          labels: ${{ steps.meta-slim.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          set: |
+            full.cache-from=type=gha,scope=code-interpreter-go-full
+            full.cache-to=type=gha,scope=code-interpreter-go-full,mode=max
+            slim.cache-from=type=gha,scope=code-interpreter-go-slim
+            slim.cache-to=type=gha,scope=code-interpreter-go-slim,mode=max
+        env:
+          VERSION: ${{ steps.version.outputs.version }}

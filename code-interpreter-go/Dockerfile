@@ -13,10 +13,22 @@
 # build because apt installs the Docker daemon at build time. The service
 # binary itself needs no shell — the entrypoint bootstrap (including starting
 # dockerd for DinD) is built into it.
+#
+# Multi-platform builds: the runtime stage runs apt for the target
+# architecture, so cross-building (e.g. arm64 on an amd64 host) needs QEMU
+# binfmt registered once per host ("exec format error" means it is missing):
+#
+#   docker run --privileged --rm tonistiigi/binfmt --install arm64
+#
+# Or build only your native platform:
+#   docker buildx bake --set "*.platforms=linux/amd64" --load
 ARG BUILD_IMAGE=dhi.io/golang:1.26-debian13-dev
 ARG RUNTIME_IMAGE=dhi.io/debian-base:trixie-dev
 
-FROM ${BUILD_IMAGE} AS build
+# The build stage always runs on the build host's native architecture and
+# cross-compiles for the target — Go needs no emulation for this, and it
+# avoids running the toolchain under QEMU on multi-platform builds.
+FROM --platform=${BUILDPLATFORM} ${BUILD_IMAGE} AS build
 
 USER root
 WORKDIR /src
@@ -24,9 +36,13 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 
+ARG TARGETOS
+ARG TARGETARCH
+
 COPY cmd ./cmd
 COPY internal ./internal
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" \
     -o /out/code-interpreter-api ./cmd/code-interpreter-api
 
 FROM ${RUNTIME_IMAGE}

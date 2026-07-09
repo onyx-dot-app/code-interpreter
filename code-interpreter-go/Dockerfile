@@ -20,8 +20,9 @@
 #
 #   docker run --privileged --rm tonistiigi/binfmt --install arm64
 #
-# Or build only your native platform:
-#   docker buildx bake --set "*.platforms=linux/amd64" --load
+# For local development, skip all of that and build only your native
+# platform:
+#   docker buildx bake local
 ARG BUILD_IMAGE=dhi.io/golang:1.26-debian13-dev
 ARG RUNTIME_IMAGE=dhi.io/debian-base:trixie-dev
 

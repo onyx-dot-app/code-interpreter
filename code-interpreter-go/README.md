@@ -31,15 +31,18 @@ default to Docker Hardened Images mirrored into the org namespace
 (`onyxdotapp/dhi-golang`, `onyxdotapp/dhi-debian`); override the build args
 to use public images:
 
-Image variants are defined in `docker-bake.hcl`; CI runs the same
-definition:
+Image variants are defined in `docker-bake.hcl`; CI builds each platform on
+a native runner from the same definition and merges the manifests.
+
+Local builds use the `local` targets, which build only your machine's native
+platform (no QEMU needed) and load the result into `docker images`:
 
 ```bash
-docker buildx bake --set "*.platforms=linux/amd64" --load   # both variants
-docker buildx bake slim --set "*.platforms=linux/amd64" --load
+docker buildx bake local        # code-interpreter-go:local and :local-slim
+docker buildx bake slim-local   # just the slim variant
 # Without a DHI subscription:
 BUILD_IMAGE=golang:1.26-bookworm RUNTIME_IMAGE=debian:bookworm-slim \
-  docker buildx bake --set "*.platforms=linux/amd64" --load
+  docker buildx bake local
 # Plain docker build works too:
 docker build . -t code-interpreter-go
 ```

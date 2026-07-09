@@ -39,12 +39,38 @@ docker build . -t code-interpreter-go \
   --build-arg RUNTIME_IMAGE=debian:bookworm-slim
 ```
 
-The Docker daemon (plus containerd and iptables) is installed only for
-Docker-in-Docker support. Because the service talks to the Engine API socket
-directly, Docker-out-of-Docker (mounted socket) and Kubernetes deployments
-can build with `--build-arg SKIP_NESTED_DOCKER=1` to ship an image with no
-docker packages at all — with the Python service, DooD still required the
-docker CLI in the image.
+## Published images
+
+Each release publishes two variants of `onyxdotapp/code-interpreter-go`:
+
+- **`:<version>` (default)** — includes the Docker daemon, so every
+  deployment mode works out of the box, including Docker-in-Docker. Pick
+  this if unsure.
+- **`:<version>-slim`** — no docker packages at all (built with
+  `SKIP_NESTED_DOCKER=1`). Opt in when deploying with a mounted socket
+  (Docker-out-of-Docker) or on Kubernetes; because the service talks to the
+  Engine API socket directly, DooD needs no docker packages in the image —
+  the Python service still required the docker CLI for that.
+
+## Deployment modes
+
+In order of preference:
+
+1. **Kubernetes** (`EXECUTOR_BACKEND=kubernetes`): executors run as locked
+   down pods; no Docker anywhere. Use the `-slim` image.
+2. **Docker-out-of-Docker**: mount a Docker socket
+   (`-v /var/run/docker.sock:/var/run/docker.sock`); executor containers are
+   created on that daemon. Use the `-slim` image. Prefer mounting a
+   **rootless** daemon's socket (`$XDG_RUNTIME_DIR/docker.sock`): a rootful
+   socket is root-equivalent on the host, while a rootless daemon caps the
+   blast radius of a service compromise at one unprivileged user and adds
+   user-namespace isolation around executors. Rootless requires cgroup v2
+   with systemd delegation for the memory/pids limits to apply.
+3. **Docker-in-Docker** (default image, `--privileged`, no socket mounted):
+   the service starts its own nested daemon. For environments where no
+   daemon can be shared. Note `--privileged` disables seccomp/AppArmor and
+   is effectively root on the host — rootless DooD is the safer choice when
+   available.
 
 ## Test
 

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "executor"
-version = "0.4.4"
+version = "0.4.5"
 description = "Dependency bundle for the code interpreter executor image"
 requires-python = ">=3.11,<3.12"
 license = { text = "MIT" }
@@ -23,10 +23,12 @@ dependencies = [
   "pypdf==6.13.3",
   "python-docx==1.2.0",
   "python-pptx>=1.0.2",
+  "reportlab>=5.0.0",
   "scikit-image>=0.25.2",
   "scikit-learn>=1.7.2",
   "scipy>=1.16.2",
   "seaborn>=0.13.2",
+  "svglib>=2.0.2",
   "xgboost>=3.0.5",
 ]
 

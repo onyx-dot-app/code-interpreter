@@ -1,8 +1,8 @@
 # Dockerfile for the Go API service (distinct from executor image)
 #
-# Base images default to Docker Hardened Images (DHI). DHI repositories are
-# mirrored into your organization's Docker Hub namespace (requires a DHI
-# subscription); override the build args to use public images instead:
+# Base images default to Docker Hardened Images (DHI), pulled directly from
+# Docker's dhi.io registry (requires a DHI subscription and `docker login
+# dhi.io`); override the build args to use public images instead:
 #
 #   docker build \
 #     --build-arg BUILD_IMAGE=golang:1.26-bookworm \
@@ -13,8 +13,8 @@
 # build because apt installs the Docker daemon at build time. The service
 # binary itself needs no shell — the entrypoint bootstrap (including starting
 # dockerd for DinD) is built into it.
-ARG BUILD_IMAGE=onyxdotapp/dhi-golang:1.26-debian13-dev
-ARG RUNTIME_IMAGE=onyxdotapp/dhi-debian:13-dev
+ARG BUILD_IMAGE=dhi.io/golang:1.26-debian13-dev
+ARG RUNTIME_IMAGE=dhi.io/debian-base:trixie-dev
 
 FROM ${BUILD_IMAGE} AS build
 

@@ -5,9 +5,10 @@
 #   VERSION=1.2.3 docker buildx bake --push
 #
 # Local single-platform build (the docker driver cannot build multi-platform):
-#   docker buildx bake --set "*.platforms=linux/amd64" --load
+#   docker buildx bake --set "*.platform=linux/amd64" --load
 #
-# Without a DHI subscription, override the hardened base images:
+# The default base images require a DHI subscription and `docker login dhi.io`.
+# Without one, override the hardened base images:
 #   BUILD_IMAGE=golang:1.26-bookworm RUNTIME_IMAGE=debian:bookworm-slim \
 #     docker buildx bake
 

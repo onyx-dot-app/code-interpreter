@@ -16,6 +16,7 @@ from kubernetes import client, config, stream  # type: ignore
 from kubernetes.client import (  # type: ignore[import-untyped]
     V1Container,
     V1ObjectMeta,
+    V1OwnerReference,
     V1Pod,
     V1PodSpec,
 )
@@ -27,6 +28,8 @@ from app.app_configs import (
     KUBERNETES_EXECUTOR_NAMESPACE,
     KUBERNETES_EXECUTOR_NET_ADMIN_LOCKDOWN,
     KUBERNETES_EXECUTOR_SERVICE_ACCOUNT,
+    KUBERNETES_OWN_NAMESPACE,
+    KUBERNETES_OWNER_DEPLOYMENT_NAME,
 )
 from app.services.executor_base import (
     SESSION_APP_LABEL,
@@ -97,6 +100,61 @@ class KubernetesExecutor(BaseExecutor):
         self.image = KUBERNETES_EXECUTOR_IMAGE
         self.service_account = KUBERNETES_EXECUTOR_SERVICE_ACCOUNT
         self.net_admin_lockdown = KUBERNETES_EXECUTOR_NET_ADMIN_LOCKDOWN
+        self.owner_reference = self._resolve_owner_reference()
+
+    def _resolve_owner_reference(self) -> V1OwnerReference | None:
+        """Look up the Deployment that owns this service, to own executor pods.
+
+        Returns None when ownership cannot apply, in which case pods are created
+        without an ownerReference exactly as before. Kubernetes only honours
+        ownerReferences within one namespace: a reference to an owner outside the
+        executor namespace looks like a deleted owner, and garbage collection
+        would delete the executor pod straight away.
+        """
+        if not KUBERNETES_OWNER_DEPLOYMENT_NAME or not KUBERNETES_OWN_NAMESPACE:
+            return None
+
+        if self.namespace != KUBERNETES_OWN_NAMESPACE:
+            logger.info(
+                "Executor pods run in namespace %s but this service runs in %s; "
+                "skipping ownerReferences, which cannot cross namespaces",
+                self.namespace,
+                KUBERNETES_OWN_NAMESPACE,
+            )
+            return None
+
+        try:
+            deployment = client.AppsV1Api(
+                api_client=self._rest_api_client
+            ).read_namespaced_deployment(
+                name=KUBERNETES_OWNER_DEPLOYMENT_NAME,
+                namespace=KUBERNETES_OWN_NAMESPACE,
+            )
+        except Exception as e:
+            # Catch every error, not only ApiException. This runs in __init__,
+            # and __init__ must not raise: /health calls the constructor through
+            # get_executor(), so an unreachable API server here would turn a
+            # graceful health error into a 500 and let the liveness probe
+            # restart the pod. Losing the ownerReference is the lesser cost.
+            logger.warning(
+                "Cannot read Deployment %s in namespace %s (%s); "
+                "executor pods get no ownerReferences",
+                KUBERNETES_OWNER_DEPLOYMENT_NAME,
+                KUBERNETES_OWN_NAMESPACE,
+                e,
+            )
+            return None
+
+        # blockOwnerDeletion stays false: setting it needs "update" on the
+        # owner's finalizers subresource, which this service does not have.
+        return V1OwnerReference(
+            api_version="apps/v1",
+            kind="Deployment",
+            name=deployment.metadata.name,
+            uid=deployment.metadata.uid,
+            controller=True,
+            block_owner_deletion=False,
+        )
 
     def check_health(self) -> HealthCheck:
         """Verify Kubernetes API is reachable and we can create pods in the namespace."""
@@ -245,6 +303,7 @@ class KubernetesExecutor(BaseExecutor):
             namespace=self.namespace,
             labels=dict(labels),
             annotations=dict(annotations) if annotations else None,
+            owner_references=[self.owner_reference] if self.owner_reference else None,
         )
 
         return V1Pod(api_version="v1", kind="Pod", metadata=metadata, spec=spec)

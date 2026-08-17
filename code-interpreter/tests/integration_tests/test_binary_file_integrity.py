@@ -26,6 +26,7 @@ def executor() -> KubernetesExecutor:
     inst.image = "test:latest"
     inst.service_account = ""
     inst.net_admin_lockdown = True
+    inst.owner_reference = None
     return inst
 
 

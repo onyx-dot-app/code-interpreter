@@ -33,6 +33,7 @@ def executor() -> KubernetesExecutor:
     inst.image = "test:latest"
     inst.service_account = ""
     inst.net_admin_lockdown = True
+    inst.owner_reference = None
     pod_mock = MagicMock()
     pod_mock.status.phase = "Running"
 

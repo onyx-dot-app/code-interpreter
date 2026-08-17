@@ -32,6 +32,13 @@ KUBERNETES_EXECUTOR_SERVICE_ACCOUNT = os.environ.get("KUBERNETES_EXECUTOR_SERVIC
 KUBERNETES_EXECUTOR_NET_ADMIN_LOCKDOWN = (
     os.environ.get("KUBERNETES_EXECUTOR_NET_ADMIN_LOCKDOWN") or "true"
 ).lower() not in ("false", "0", "no")
+# Namespace this service runs in, and the name of the Deployment that owns it.
+# When both are set and the service shares a namespace with its executor pods,
+# executor pods get an ownerReference to that Deployment. This lets Kubernetes
+# garbage-collect leaked pods and lets monitoring tell them apart from
+# long-lived workloads. Requires "get" on apps/deployments.
+KUBERNETES_OWN_NAMESPACE = os.environ.get("KUBERNETES_OWN_NAMESPACE") or ""
+KUBERNETES_OWNER_DEPLOYMENT_NAME = os.environ.get("KUBERNETES_OWNER_DEPLOYMENT_NAME") or ""
 
 # Execution limits
 MAX_EXEC_TIMEOUT_MS = int(os.environ.get("MAX_EXEC_TIMEOUT_MS") or 60_000)

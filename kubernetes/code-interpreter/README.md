@@ -69,6 +69,7 @@ helm install code-interpreter ./code-interpreter -f my-values.yaml
 | `codeInterpreter.maxExecTimeoutMs` | Maximum execution timeout in milliseconds | `60000` |
 | `codeInterpreter.memoryLimitMb` | Memory limit for code execution in MB | `256` |
 | `codeInterpreter.kubernetesExecutor.image` | Container image used for execution pods | `python-executor-sci` |
+| `codeInterpreter.kubernetesExecutor.setOwnerReferences` | Give execution pods an ownerReference to this chart's Deployment | `true` |
 | `service.type` | Kubernetes service type | `ClusterIP` |
 | `ingress.enabled` | Enable ingress | `false` |
 | `rbac.create` | Create RBAC resources | `true` |
@@ -113,6 +114,24 @@ The chart always uses the Kubernetes executor to run ephemeral pods for code exe
 Required RBAC permissions (automatically created when `rbac.create=true`):
 - Create, get, list, watch, delete pods
 - Create pod exec
+- Get deployments, when `codeInterpreter.kubernetesExecutor.setOwnerReferences=true`
+
+### Owner references
+
+With `codeInterpreter.kubernetesExecutor.setOwnerReferences=true` (the default), each
+execution pod carries an ownerReference to this chart's Deployment. This gives two
+benefits:
+
+- Kubernetes garbage-collects execution pods that the service fails to clean up, for
+  example after an OOM kill.
+- Monitoring can tell short-lived execution pods apart from long-lived workloads,
+  because the standard "pod has an owner" test now applies to them.
+
+The service reads its own Deployment once at startup to build the reference. It skips
+the reference, and logs why, when the read is not permitted or when
+`codeInterpreter.kubernetesExecutor.namespace` names a different namespace than the
+service: Kubernetes does not honour ownerReferences across namespaces, and would treat
+the owner as already deleted.
 
 ## Security Considerations
 

@@ -12,6 +12,12 @@ rules:
   - apiGroups: [""]
     resources: ["pods/exec"]
     verbs: ["create", "get"]
+  {{- if .Values.codeInterpreter.kubernetesExecutor.setOwnerReferences }}
+  # Read this chart's own Deployment to build the executor pod ownerReference.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get"]
+  {{- end }}
   {{- with .Values.rbac.additionalRules }}
   {{- toYaml . | nindent 2 }}
   {{- end }}

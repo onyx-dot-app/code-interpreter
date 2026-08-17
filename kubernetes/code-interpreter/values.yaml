@@ -122,6 +122,15 @@ codeInterpreter:
     # (templates/networkpolicy.yaml) becomes the sole network restriction on
     # executor pods, so it must be enforced by the cluster CNI to have effect.
     netAdminLockdown: true
+    # When true, executor and session pods carry an ownerReference to this
+    # chart's Deployment. Kubernetes then garbage-collects pods that the service
+    # leaks (for example after an OOM kill), and monitoring can tell these
+    # short-lived pods apart from long-lived workloads.
+    #
+    # This grants the service "get" on apps/deployments. It has no effect when
+    # kubernetesExecutor.namespace names a different namespace than the service,
+    # because Kubernetes does not honour ownerReferences across namespaces.
+    setOwnerReferences: true
     # Resource limits for execution pods
     podResources:
       limits:

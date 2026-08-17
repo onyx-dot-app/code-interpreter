@@ -67,6 +67,16 @@ spec:
             - name: KUBERNETES_EXECUTOR_SERVICE_ACCOUNT
               value: {{ .Values.codeInterpreter.kubernetesExecutor.serviceAccount | quote }}
             {{- end }}
+            {{- if .Values.codeInterpreter.kubernetesExecutor.setOwnerReferences }}
+            # Lets the service own the pods it spawns, so Kubernetes can
+            # garbage-collect them and monitoring can identify them.
+            - name: KUBERNETES_OWN_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: KUBERNETES_OWNER_DEPLOYMENT_NAME
+              value: {{ include "code-interpreter.fullname" . | quote }}
+            {{- end }}
             {{- with .Values.extraEnvVars }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

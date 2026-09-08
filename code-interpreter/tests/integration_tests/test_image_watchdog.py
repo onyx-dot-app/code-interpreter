@@ -183,7 +183,7 @@ def test_lifespan_starts_watchdog_only_for_docker_backend(
     with (
         patch("app.main.EXECUTOR_BACKEND", backend),
         patch("app.main.PYTHON_EXECUTOR_DOCKER_IMAGE_WATCHDOG_INTERVAL_SEC", interval_sec),
-        patch("app.main._ensure_docker_image_available", return_value=False),
+        patch("app.main._ensure_docker_image_available"),
         patch("app.main._reap_expired_sessions_once", new=AsyncMock()),
         patch("app.main._image_watchdog_loop", new=_fake_loop),
         TestClient(create_app()),

@@ -35,44 +35,19 @@ logger = logging.getLogger(__name__)
 SERVICE_VERSION: Final[str] = _package_version("code-interpreter")
 
 
-def _ensure_docker_image_available(*, quiet: bool = False) -> bool:
-    """Ensure the Docker executor image is available locally.
-
-    This checks if the image exists locally, and if not, attempts to pull it.
-    It runs during application startup so the image is ready before accepting
-    requests, and again from the image watchdog so a host that removes the image
-    while the service is running (e.g. ``docker system prune -a``) recovers
-    without a restart.
-
-    Returns ``True`` if the image was missing and had to be pulled. Raises
-    ``RuntimeError`` if the pull fails or times out. With ``quiet``, the routine
-    "image is present" path logs at DEBUG instead of INFO so periodic callers do
-    not fill the log; pulls and failures are always logged.
-    """
-    present_level = logging.DEBUG if quiet else logging.INFO
-
-    docker_bin = which(PYTHON_EXECUTOR_DOCKER_BIN)
-    if not docker_bin:
-        logger.warning("Docker binary not found, skipping image check")
-        return False
-
-    image_with_tag = normalize_image_ref(PYTHON_EXECUTOR_DOCKER_IMAGE)
-
-    # Check if image exists locally
-    logger.log(present_level, f"Checking for Docker image: {image_with_tag}")
-    check_result = subprocess.run(
+def _docker_image_present(docker_bin: str, image_with_tag: str) -> bool:
+    """Return whether ``image_with_tag`` exists in the local image store."""
+    result = subprocess.run(
         [docker_bin, "image", "inspect", image_with_tag],
         capture_output=True,
         timeout=10,
         check=False,
     )
+    return result.returncode == 0
 
-    if check_result.returncode == 0:
-        logger.log(present_level, f"Docker image {image_with_tag} is already available locally")
-        return False
 
-    # Image doesn't exist, try to pull it
-    logger.info(f"Docker image {image_with_tag} not found locally, attempting to pull...")
+def _pull_docker_image(docker_bin: str, image_with_tag: str) -> None:
+    """Pull ``image_with_tag``. Raises ``RuntimeError`` if the pull fails or times out."""
     try:
         pull_result = subprocess.run(
             [docker_bin, "pull", image_with_tag],
@@ -80,24 +55,45 @@ def _ensure_docker_image_available(*, quiet: bool = False) -> bool:
             timeout=300,  # 5 minutes timeout for pulling
             check=False,
         )
-
-        if pull_result.returncode == 0:
-            logger.info(f"Successfully pulled {image_with_tag}")
-            return True
-
-        error_msg = (
-            pull_result.stderr.decode("utf-8", errors="replace") if pull_result.stderr else ""
-        )
-        logger.error(f"Failed to pull {image_with_tag}: {error_msg}")
-        raise RuntimeError(
-            f"Docker executor image {image_with_tag} is not available locally "
-            f"and could not be pulled. Error: {error_msg}"
-        )
     except subprocess.TimeoutExpired as e:
         raise RuntimeError(
             f"Timeout while pulling Docker image {image_with_tag}. "
             "This may indicate network issues or the image is very large."
         ) from e
+
+    if pull_result.returncode == 0:
+        logger.info(f"Successfully pulled {image_with_tag}")
+        return
+
+    error_msg = pull_result.stderr.decode("utf-8", errors="replace") if pull_result.stderr else ""
+    logger.error(f"Failed to pull {image_with_tag}: {error_msg}")
+    raise RuntimeError(
+        f"Docker executor image {image_with_tag} is not available locally "
+        f"and could not be pulled. Error: {error_msg}"
+    )
+
+
+def _ensure_docker_image_available() -> None:
+    """Ensure the Docker executor image is available locally.
+
+    This checks if the image exists locally, and if not, attempts to pull it.
+    This runs during application startup to ensure the image is ready before
+    accepting requests.
+    """
+    docker_bin = which(PYTHON_EXECUTOR_DOCKER_BIN)
+    if not docker_bin:
+        logger.warning("Docker binary not found, skipping image check")
+        return
+
+    image_with_tag = normalize_image_ref(PYTHON_EXECUTOR_DOCKER_IMAGE)
+
+    logger.info(f"Checking for Docker image: {image_with_tag}")
+    if _docker_image_present(docker_bin, image_with_tag):
+        logger.info(f"Docker image {image_with_tag} is already available locally")
+        return
+
+    logger.info(f"Docker image {image_with_tag} not found locally, attempting to pull...")
+    _pull_docker_image(docker_bin, image_with_tag)
 
 
 async def _reap_expired_sessions_once() -> None:
@@ -118,36 +114,48 @@ async def _session_reaper_loop() -> None:
         await _reap_expired_sessions_once()
 
 
-async def _image_watchdog_once() -> None:
-    """Run a single image watchdog pass: re-pull the executor image if it went missing.
+def _restore_docker_image_if_missing() -> None:
+    """Re-pull the executor image if the host has removed it since startup.
 
-    Never raises. A failed re-pull is logged and retried on the next pass; it must
-    not take down a running service that may have live sessions.
+    Executor containers start with ``--pull never``, so an image removed by the
+    host (``docker system prune -a``, image garbage collection) would otherwise
+    fail every execution until an operator restarts the service. The common
+    case, image present, costs one ``docker image inspect`` and logs nothing.
+    """
+    docker_bin = which(PYTHON_EXECUTOR_DOCKER_BIN)
+    if not docker_bin:
+        return  # Startup already warned, and /health reports this case on its own.
+
+    image_with_tag = normalize_image_ref(PYTHON_EXECUTOR_DOCKER_IMAGE)
+    if _docker_image_present(docker_bin, image_with_tag):
+        return
+
+    logger.warning(
+        "Executor image %s is missing from the host (e.g. removed by `docker system prune`); "
+        "re-pulling",
+        image_with_tag,
+    )
+    _pull_docker_image(docker_bin, image_with_tag)
+
+
+async def _image_watchdog_once() -> None:
+    """Run a single image watchdog pass. Never raises.
+
+    A failed re-pull is logged and retried on the next pass; it must not take
+    down a running service that may have live sessions.
     """
     try:
-        pulled = await asyncio.to_thread(_ensure_docker_image_available, quiet=True)
+        await asyncio.to_thread(_restore_docker_image_if_missing)
     except Exception:
         logger.warning(
             "Executor image watchdog could not restore the executor image; "
             "will retry on the next pass",
             exc_info=True,
         )
-        return
-    if pulled:
-        logger.warning(
-            "Executor image %s was missing from the host (e.g. removed by `docker system prune`) "
-            "and has been re-pulled",
-            normalize_image_ref(PYTHON_EXECUTOR_DOCKER_IMAGE),
-        )
 
 
 async def _image_watchdog_loop(interval_sec: int) -> None:
-    """Periodically make sure the executor image is still present on the host.
-
-    Executor containers start with ``--pull never``, so an image removed by the
-    host (``docker system prune -a``, image garbage collection) would otherwise
-    fail every execution until an operator restarts the service.
-    """
+    """Periodically re-pull the executor image if the host removed it."""
     while True:
         await asyncio.sleep(interval_sec)
         await _image_watchdog_once()

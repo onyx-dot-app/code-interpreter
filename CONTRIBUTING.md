@@ -35,6 +35,12 @@ This is ideal for:
 - CI/CD pipelines
 - Any scenario where you want instant DinD readiness
 
+Note that the pre-loaded executor image lands in the host's image store like any
+other image, so a host-level `docker system prune -a` still removes it. The service
+re-pulls a missing executor image on its own (see
+`PYTHON_EXECUTOR_DOCKER_IMAGE_WATCHDOG_INTERVAL_SEC`); on air-gapped hosts that
+cannot pull, set that variable to `0` so the watchdog does not retry the registry.
+
 ### Local Deployment
 
 #### Prerequisites

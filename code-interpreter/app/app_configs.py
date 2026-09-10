@@ -17,6 +17,15 @@ PYTHON_EXECUTOR_DOCKER_RUN_ARGS = os.environ.get("PYTHON_EXECUTOR_DOCKER_RUN_ARG
 # for maximum isolation. Set to a Docker network name (e.g. "onyx_default", "traefik")
 # to allow executor containers to reach services on that network.
 PYTHON_EXECUTOR_DOCKER_NETWORK = os.environ.get("PYTHON_EXECUTOR_DOCKER_NETWORK") or "none"
+# How often (seconds) the image watchdog checks that the executor image is still
+# present on the host and re-pulls it if it has gone missing (e.g. after
+# `docker system prune -a`). Executor containers run with `--pull never`, so without
+# this a removed image breaks every execution until the service is restarted. The
+# common case costs one `docker image inspect` per pass. Set to 0 to disable, e.g.
+# on air-gapped hosts that cannot pull and would only pay a registry timeout.
+PYTHON_EXECUTOR_DOCKER_IMAGE_WATCHDOG_INTERVAL_SEC = int(
+    os.environ.get("PYTHON_EXECUTOR_DOCKER_IMAGE_WATCHDOG_INTERVAL_SEC") or 60
+)
 
 # Kubernetes executor configuration
 KUBERNETES_EXECUTOR_NAMESPACE = os.environ.get("KUBERNETES_EXECUTOR_NAMESPACE") or "default"

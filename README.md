@@ -155,6 +155,7 @@ Configure the service via environment variables:
 - `MAX_OUTPUT_BYTES`: Maximum output size (default: `1048576` = 1MB)
 - `MAX_FILE_SIZE_MB`: Maximum file upload size (default: `10`)
 - `FILE_STORAGE_DIR`: Directory for file storage (default: `/tmp/code-interpreter-files`)
+- `PYTHON_EXECUTOR_DOCKER_IMAGE_WATCHDOG_INTERVAL_SEC`: How often the Docker backend checks that the executor image is still present on the host and re-pulls it if it was removed, e.g. by `docker system prune -a` (default: `60`; `0` disables, for air-gapped hosts that cannot pull)
 
 ## Security
 
